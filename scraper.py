@@ -19,13 +19,14 @@ Requirements:
 
 import argparse
 import asyncio
+import glob as globmod
 import logging
 import sys
 import time
 from pathlib import Path
 
 from playwright.async_api import async_playwright, Page, Browser
-from pypdf import PdfWriter
+from PyPDF2 import PdfMerger
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -335,21 +336,23 @@ async def render_section_to_pdf(
 
 def merge_pdfs(pdf_paths: list[Path], output_path: Path) -> None:
     """Merge a list of PDF files into a single output PDF."""
-    writer = PdfWriter()
+    merger = PdfMerger()
+    count = 0
     for pdf_path in pdf_paths:
         if pdf_path and pdf_path.exists():
             try:
-                writer.append(str(pdf_path))
+                merger.append(str(pdf_path))
+                count += 1
             except Exception as e:
                 log.warning("Could not merge %s: %s", pdf_path.name, e)
 
-    if len(writer.pages) == 0:
+    if count == 0:
         log.error("No pages to merge!")
         return
 
-    writer.write(str(output_path))
-    writer.close()
-    log.info("Merged PDF saved to: %s (%d pages)", output_path, len(writer.pages))
+    merger.write(str(output_path))
+    merger.close()
+    log.info("Merged PDF saved to: %s (%d sections)", output_path, count)
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +371,35 @@ def cleanup_temp_pdfs(temp_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _find_chromium_executable() -> str | None:
+    """Auto-detect an installed Chromium binary in the Playwright cache.
+
+    Returns the path string or None if the default lookup should be used.
+    """
+    cache_dir = Path.home() / ".cache" / "ms-playwright"
+    if not cache_dir.exists():
+        return None
+
+    # Look for full chromium (not headless_shell) — needed for page.pdf()
+    candidates = sorted(cache_dir.glob("chromium-*/chrome-linux/chrome"), reverse=True)
+    if candidates:
+        return str(candidates[0])
+
+    # Fallback: headless shell
+    candidates = sorted(
+        cache_dir.glob("chromium_headless_shell-*/chrome-linux/headless_shell"),
+        reverse=True,
+    )
+    if candidates:
+        return str(candidates[0])
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
 
@@ -377,10 +409,19 @@ async def run(output: str, temp_dir: str, keep_temp: bool, concurrency: int) -> 
     temp_path.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
+        # Try to find an installed Chromium executable.  When the Playwright
+        # pip version doesn't exactly match the pre-installed browser build,
+        # the default launch() fails.  Auto-detect and fall back gracefully.
+        chromium_path = _find_chromium_executable()
+        launch_kwargs: dict = dict(
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox"],
         )
+        if chromium_path:
+            launch_kwargs["executable_path"] = chromium_path
+            log.info("Using Chromium at: %s", chromium_path)
+
+        browser = await pw.chromium.launch(**launch_kwargs)
 
         # --- Discovery phase ---
         log.info("=" * 60)
