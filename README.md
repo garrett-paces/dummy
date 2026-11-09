@@ -46,3 +46,14 @@ python3 scraper.py -v
 | `--keep-temp` | off | Keep temporary PDFs after merging |
 | `--concurrency` | 3 | Max concurrent page renders |
 | `-v`, `--verbose` | off | Enable debug logging |
+
+---
+
+# Lanternwood (browser RPG)
+
+A small single-file RPG in `rpg/index.html`. Open it in any browser; no build or server needed.
+
+- Explore a village, the Dusk Wood and the Moth Hollow; get the Ember back from the Moth Queen.
+- Turn-based battles (Strike, Flare, Tonic, Oil, Flee), XP and levels, a shop and an inn.
+- Controls: arrows/WASD to move, Space to talk/open/continue, 1–5 in battle. Touch d-pad on phones.
+- Progress saves to `localStorage`.
